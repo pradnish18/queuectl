@@ -4,12 +4,18 @@
   "description": "Multi-process background job queue CLI",
   "main": "dist/db.js",
   "bin": {
-    "queuectl": "./dist/cli.js"
+    "queuectl": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "DECISIONS.md",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
+    "test": "jest",
     "typecheck": "tsc --noEmit",
-    "test": "tsc && jest --forceExit"
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
