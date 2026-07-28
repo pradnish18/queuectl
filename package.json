@@ -1,5 +1,5 @@
 {
-  "name": "queuectl",
+  "name": "@pradnish18/queuectl",
   "version": "0.1.0",
   "description": "Multi-process background job queue CLI",
   "main": "dist/db.js",
