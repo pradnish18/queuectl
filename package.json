@@ -15,6 +15,7 @@
     "build": "tsc",
     "test": "jest",
     "typecheck": "tsc --noEmit",
+    "postinstall": "npm rebuild better-sqlite3",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
