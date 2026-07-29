@@ -1,6 +1,6 @@
 # Architectural Decisions & Design Trade-offs (`queuectl`)
 
-## 0. Modular Architecture: Plain JavaScript Over TypeScript
+## Modular Architecture: Plain JavaScript Over TypeScript
 * **Decision:** Refactored from a monolithic TypeScript codebase to a modular plain JavaScript architecture with separated concerns: `src/core/` for business logic, `src/commands/` for CLI handlers, `src/config/` for configuration management, and `bin/` for the entry point.
 * **Trade-off & Rationale:**
   * *Pros:* Eliminates the TypeScript compilation step (`tsc`), enabling zero-build development and deployment. The separation into `src/core/storage.js`, `src/core/executor.js`, `src/core/retry.js`, and `src/core/jobModel.js` makes unit testing and reasoning about individual concerns significantly easier.
