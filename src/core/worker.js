@@ -1,13 +1,13 @@
-import { exec as cpExec, fork, ChildProcess } from "child_process";
-import path from "path";
-import {
+const { execCommand } = require("./executor");
+const {
   claimNextJob,
   completeJob,
   failJob,
   recoverStaleJobs,
   updateHeartbeat,
   close,
-} from "./db";
+} = require("./storage");
+const { loadConfig } = require("../config/configStore");
 
 const WORKER_ID = `worker-${process.pid}-${Date.now()}`;
 const POLL_INTERVAL_MS = 1000;
@@ -15,23 +15,17 @@ const HEARTBEAT_INTERVAL_MS = 10000;
 
 let isShuttingDown = false;
 
-function sleep(ms: number): Promise<void> {
+function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function execCommand(command: string): Promise<number | null> {
-  return new Promise((resolve, reject) => {
-    const child = cpExec(command);
-    child.on("exit", (code) => resolve(code));
-    child.on("error", (err) => reject(err));
-  });
-}
-
-export async function runWorkerLoop(workerId: string = WORKER_ID): Promise<void> {
+async function runWorkerLoop(workerId) {
+  workerId = workerId || WORKER_ID;
+  const config = loadConfig();
   console.log(`[${workerId}] Worker started`);
 
   while (true) {
-    recoverStaleJobs(60);
+    recoverStaleJobs(30);
 
     const job = claimNextJob(workerId);
 
@@ -59,18 +53,14 @@ export async function runWorkerLoop(workerId: string = WORKER_ID): Promise<void>
         console.log(`[${workerId}] Job ${job.id} completed`);
       } else {
         const newAttempts = job.attempts + 1;
-        failJob(job.id, newAttempts, 2);
-        console.log(
-          `[${workerId}] Job ${job.id} failed (exit code ${code}, attempt ${newAttempts})`
-        );
+        failJob(job.id, newAttempts, config["backoff-base"]);
+        console.log(`[${workerId}] Job ${job.id} failed (exit code ${code}, attempt ${newAttempts})`);
       }
     } catch (err) {
       clearInterval(heartbeat);
       const newAttempts = job.attempts + 1;
-      failJob(job.id, newAttempts, 2);
-      console.log(
-        `[${workerId}] Job ${job.id} failed (error: ${err}, attempt ${newAttempts})`
-      );
+      failJob(job.id, newAttempts, config["backoff-base"]);
+      console.log(`[${workerId}] Job ${job.id} failed (error: ${err}, attempt ${newAttempts})`);
     }
 
     if (isShuttingDown) {
@@ -80,12 +70,16 @@ export async function runWorkerLoop(workerId: string = WORKER_ID): Promise<void>
   }
 }
 
-function handleSignal(signal: string): void {
+function handleSignal(signal) {
   console.log(`[${WORKER_ID}] Received ${signal}, shutting down...`);
   isShuttingDown = true;
 }
 
 if (process.env.QUEUECTL_WORKER === "true") {
+  // Suppress EPIPE errors when parent closes stdout during shutdown
+  process.stdout.on("error", () => {});
+  process.stderr.on("error", () => {});
+
   process.on("SIGINT", () => handleSignal("SIGINT"));
   process.on("SIGTERM", () => handleSignal("SIGTERM"));
 
@@ -94,17 +88,4 @@ if (process.env.QUEUECTL_WORKER === "true") {
     close();
     process.exit(1);
   });
-}
-
-export function startWorkers(count: number): ChildProcess[] {
-  const children: ChildProcess[] = [];
-  for (let i = 0; i < count; i++) {
-    const child = fork(__filename, {
-      env: { ...process.env, QUEUECTL_WORKER: "true" },
-    });
-    children.push(child);
-    console.log(`Spawned worker with PID ${child.pid}`);
-  }
-  console.log(`Started ${count} worker(s)`);
-  return children;
 }

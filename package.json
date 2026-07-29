@@ -2,31 +2,27 @@
   "name": "@pradnish18/queuectl",
   "version": "0.1.0",
   "description": "Multi-process background job queue CLI",
-  "main": "dist/db.js",
+  "main": "src/core/storage.js",
   "bin": {
-    "queuectl": "dist/cli.js"
+    "queuectl": "bin/queuectl.js"
   },
   "files": [
-    "dist",
+    "bin",
+    "src",
+    "test",
     "DECISIONS.md",
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
-    "test": "jest",
-    "typecheck": "tsc --noEmit",
-    "postinstall": "npm rebuild better-sqlite3",
-    "prepublishOnly": "npm run build"
+    "test": "bash test/validate.sh",
+    "build": "node -c bin/queuectl.js && find src bin -name '*.js' -print0 | xargs -0 -n1 node -c",
+    "postinstall": "npm rebuild better-sqlite3"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
+    "chalk": "^4.1.2",
+    "cli-table3": "^0.6.5",
     "commander": "^12.0.0"
   },
-  "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
-    "@types/jest": "^30.0.0",
-    "jest": "^30.4.2",
-    "ts-jest": "^29.4.12",
-    "typescript": "^5.7.0"
-  }
+  "devDependencies": {}
 }

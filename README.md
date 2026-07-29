@@ -1,6 +1,6 @@
 # ⚡ QueueCTL (`queuectl`)
 
-A lightweight, production-grade CLI background job queue system built with Node.js, TypeScript, and SQLite.
+A lightweight, production-grade CLI background job queue system built with Node.js and SQLite.
 
 QueueCTL offloads heavy asynchronous tasks (emails, webhooks, processing scripts) from your main application thread to background worker processes. It offers zero-config persistence, crash recovery, exponential backoff retries, and a Dead Letter Queue (DLQ).
 
@@ -8,41 +8,19 @@ QueueCTL offloads heavy asynchronous tasks (emails, webhooks, processing scripts
 
 ## 🧪 Interactive Playground: Try It Out in 30 Seconds!
 
-Copy and paste these commands into your terminal to see job claiming, background processing, retries, and DLQ handling live in action!
-
-### 1. Enqueue Sample Jobs
-
 ```bash
-# Success job
+# 1. Enqueue a success job and a failing job
 queuectl enqueue '{"command": "echo Hello from QueueCTL!"}'
+queuectl enqueue '{"command": "exit 1", "max_retries": 2}'
 
-# Failing job (configured with 2 max retries to test exponential backoff)
-queuectl enqueue '{"command": "exit 1"}' --max-retries 2
-```
-
-### 2. Inspect the Initial Queue State
-
-```bash
+# 2. Inspect queue state
 queuectl status
-```
 
-> Shows job counts grouped by state: pending, processing, completed, failed, dead
+# 3. Process jobs with a background worker (Ctrl+C to stop)
+queuectl worker start --count 2
 
-### 3. Start a Background Worker
-
-```bash
-queuectl worker start --concurrency 2
-```
-
-> Processes pending jobs, retries failures with backoff, and outputs logs in real-time
-
-### 4. Inspect & Retry Dead Jobs (DLQ)
-
-```bash
-# List jobs in Dead Letter Queue after max retries are exhausted
+# 4. Inspect & retry dead jobs
 queuectl dlq list
-
-# Re-queue a dead job back to pending state
 queuectl dlq retry <job-id>
 ```
 
@@ -61,121 +39,115 @@ queuectl dlq retry <job-id>
 
 ## 📦 Installation & Setup
 
-### 1. Global Installation (NPM)
+### Global Installation
 
 ```bash
-npm install -g queuectl
+npm install -g @pradnish18/queuectl
 ```
 
-### 2. Local Setup (From Source)
+### Local Setup (From Source)
 
 ```bash
-# Clone repository
 git clone https://github.com/pradnish18/queuectl.git
 cd queuectl
-
-# Install dependencies
 npm install
-
-# Build TypeScript source
-npm run build
-
-# Link executable locally
 npm link
 ```
 
 ---
 
-## 🚀 CLI Usage & Commands Guide
+## 🚀 CLI Usage
 
 ### `enqueue`
 
-Enqueues a job into the queue database.
+Enqueues a job. Accepts a plain shell command or a JSON object with `command`, `max_retries`, and `backoff_base`.
 
 ```bash
-queuectl enqueue '{"command": "python3 script.py"}' --max-retries 3 --backoff-base 2
+queuectl enqueue '{"command": "python3 script.py", "max_retries": 3}'
+queuectl enqueue 'echo plain command'
 ```
 
-### `worker start`
+### `worker start` / `worker stop`
 
-Starts background worker processes in the foreground.
+Starts or stops background worker processes.
 
 ```bash
-queuectl worker start --concurrency 4
+queuectl worker start --count 4
+queuectl worker stop
 ```
 
 ### `status`
 
-Displays summary metrics of the job queue.
+Displays a color-coded summary table of the job queue.
 
 ```bash
-# Table view
 queuectl status
-
-# JSON view (for scripting)
-queuectl status --json
 ```
 
-### `list`
+### `list [--state <state>] [--json]`
 
-Lists jobs filtered by state (pending, processing, completed, failed, dead).
+Lists jobs. Use `--json` for raw JSON output (scripts, piping).
 
 ```bash
 queuectl list --state pending --json
 ```
 
-### `dlq list` & `dlq retry`
+### `dlq list` / `dlq retry <id>`
 
-Manages permanently failed jobs.
+Manages the Dead Letter Queue.
 
 ```bash
 queuectl dlq list
-queuectl dlq retry <job-id>
+queuectl dlq retry job-1743212345678-abc123
 ```
 
----
+### `config set <key> <value>`
 
-## 🏗️ Architecture Overview
-
-```
-[ Application / CLI ]
-          │
-          ▼
- 1. Enqueue Job ──────────► [ SQLite Database ] (WAL Mode)
-                                   │
-                                   ▼
-                         2. Worker Polls Job
-                                   │
-                    ┌──────────────┴──────────────┐
-                    ▼                             ▼
-            Job Succeeds                   Job Fails
-                    │                             │
-                    ▼                             ▼
-             Mark "completed"           Exponential Backoff
-                                           (Delay = 2^attempt)
-                                                  │
-                                                  ▼
-                                       Max Retries Reached?
-                                        ┌─────────┴─────────┐
-                                        ▼                   ▼
-                                       YES                 NO
-                                        │                   │
-                                        ▼                   ▼
-                                   Move to DLQ      Re-queue Job(Dead Letter Queue)
-```
-
----
-
-## 🧪 Running Automated Tests
-
-QueueCTL comes with a full automated test suite powered by Jest covering database state transitions, worker concurrency, backoff calculations, DLQ operations, and CLI contracts.
+Sets configuration (`max-retries`, `backoff-base`).
 
 ```bash
-npm test
+queuectl config set max-retries 5
 ```
 
 ---
 
-## 📄 Documentation & Design Decisions
+## 🏗️ Architecture
 
-For detailed architectural trade-offs, state machine transitions, SQLite locking strategies, and CLI contract design decisions, see [DECISIONS.md](DECISIONS.md).
+```
+bin/queuectl.js          CLI entry point
+├── src/commands/        Command handlers (enqueue, worker, status, list, dlq, config)
+├── src/core/            Business logic
+│   ├── storage.js       SQLite persistence layer (WAL mode, atomic claiming)
+│   ├── executor.js      child_process.exec wrapper for safe command execution
+│   ├── retry.js         Exponential backoff: delay = base^attempts
+│   └── jobModel.js      Schema definition and validation
+├── src/config/          .queuectlrc configuration management
+└── test/validate.sh     End-to-end validation suite
+```
+
+### Job Lifecycle
+
+```
+enqueue ──► pending ──► processing ──► completed
+                            │
+                            ▼
+                         failed ──► retry (backoff delay)
+                            │
+                            ▼
+                          dead (DLQ) ──► dlq retry ──► pending
+```
+
+---
+
+## 🧪 Running Tests
+
+```bash
+npm test                # End-to-end validation suite (14 scenarios)
+bash test/validate.sh   # Same, directly
+```
+
+---
+
+## 📄 Design Decisions
+
+See [DECISIONS.md](DECISIONS.md) for detailed architectural trade-offs on storage engine choice, atomic claiming, crash recovery, DLQ retry strategy, cross-process worker management, and graceful shutdown.

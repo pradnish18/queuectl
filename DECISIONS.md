@@ -1,5 +1,12 @@
 # Architectural Decisions & Design Trade-offs (`queuectl`)
 
+## 0. Modular Architecture: Plain JavaScript Over TypeScript
+* **Decision:** Refactored from a monolithic TypeScript codebase to a modular plain JavaScript architecture with separated concerns: `src/core/` for business logic, `src/commands/` for CLI handlers, `src/config/` for configuration management, and `bin/` for the entry point.
+* **Trade-off & Rationale:**
+  * *Pros:* Eliminates the TypeScript compilation step (`tsc`), enabling zero-build development and deployment. The separation into `src/core/storage.js`, `src/core/executor.js`, `src/core/retry.js`, and `src/core/jobModel.js` makes unit testing and reasoning about individual concerns significantly easier.
+  * *Cons:* Loses static type checking at compile time. Requires discipline around JSDoc annotations and runtime validation.
+  * *Verdict:* For a CLI tool of this scope, the productivity gain from removing the build step and simplifying the module graph outweighs the safety net of TypeScript. The `test/validate.sh` integration suite provides adequate behavioural coverage.
+
 ## 1. Storage Engine: SQLite (`better-sqlite3`)
 * **Decision:** Used SQLite as an embedded relational database via `better-sqlite3` operating in WAL (Write-Ahead Logging) mode.
 * **Trade-off & Rationale:**
@@ -8,7 +15,7 @@
   * *Verdict:* Perfect fit for a self-contained CLI job queue application that must run out of the box on any developer machine.
 
 ## 2. Atomic Job Claiming Across Processes
-* **Decision:** Enforced atomic job reservation in `src/db.ts` (`claimNextJob()`) using SQLite default deferred transactions wrapping a two-statement pattern: a `SELECT` to find the oldest eligible job, followed by an `UPDATE` to transition state and lock it:
+* **Decision:** Enforced atomic job reservation in `src/core/storage.js` (`claimNextJob()`) using SQLite default deferred transactions wrapping a two-statement pattern: a `SELECT` to find the oldest eligible job, followed by an `UPDATE` to transition state and lock it:
   ```sql
   SELECT * FROM jobs
   WHERE (state = 'pending' OR (state = 'failed' AND run_at <= CURRENT_TIMESTAMP))
@@ -25,7 +32,7 @@
   * *Verdict:* Guarantees strictly at-most-once job claiming across separate OS processes without needing external locking services like Redis.
 
 ## 3. Worker Crash Recovery (SIGKILL Scenario)
-* **Decision:** Implemented an automatic stale job recovery function (`recoverStaleJobs()` in `src/db.ts`) executed on worker startup and on every polling cycle with a default 60-second visibility timeout threshold.
+* **Decision:** Implemented an automatic stale job recovery function (`recoverStaleJobs()` in `src/core/storage.js`) executed on worker startup and on every polling cycle with a default 60-second visibility timeout threshold.
 * **Trade-off & Rationale:**
   * *Pros:* If a worker process receives a SIGKILL mid-execution, no cleanup handlers run and the job remains stuck in processing. The recovery query automatically resets jobs back to pending if their `updated_at` timestamp exceeds the 60-second visibility timeout threshold.
   * *Cons:* Long-running valid jobs that exceed 60 seconds without updating their heartbeat could theoretically be reclaimed prematurely.
