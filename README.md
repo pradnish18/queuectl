@@ -6,7 +6,10 @@ QueueCTL offloads heavy asynchronous tasks (emails, webhooks, processing scripts
 
 ---
 
-## 🧪 Interactive Playground: Try It Out in 30 Seconds!
+## Demo video link:
+https://docs.google.com/videos/d/1k13DM9uCqziOI-1WvXUaJHWnV7mZ3ilPpuAmBVyH6Ys/play?usp=sharing
+
+## Interactive Playground: Try It Out in 30 Seconds!
 
 ```bash
 # 1. Enqueue a success job and a failing job
